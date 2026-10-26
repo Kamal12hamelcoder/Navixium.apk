@@ -1,0 +1,51 @@
+name: Build APK
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack project
+        run: |
+          unzip -q -o project.zip -d work
+          mkdir -p work/app/src/main/assets
+          # أي صور ترفعها بجانب project.zip تُنسخ تلقائيا إلى التطبيق
+          cp -f *.png *.jpg *.jpeg *.webp *.svg work/app/src/main/assets/ 2>/dev/null || true
+          # وإن رفعت نسخة معدلة من الصفحة فهي تستبدل القديمة
+          if [ -f navixium.html ]; then cp -f navixium.html work/app/src/main/assets/; fi
+          if [ -f Online.js ]; then cp -f Online.js work/app/src/main/assets/; fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Build debug APK
+        working-directory: work
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: navixium-apk
+          path: work/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish release (direct APK download)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp work/app/build/outputs/apk/debug/app-debug.apk Navixium.apk
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create latest Navixium.apk --title "NAVIXIUM latest build" --notes "Latest debug build"
